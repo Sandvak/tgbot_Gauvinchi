@@ -5,7 +5,7 @@ from telebot import TeleBot
 from config import config
 from database import Database
 from moderation import esc
-from keyboards import support_categories, ticket_actions
+from keyboards import support_categories, support_main_menu, ticket_actions
 from states import State
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
@@ -25,14 +25,22 @@ def admin(uid):
 @bot.message_handler(commands=["start"])
 def start(message):
     if admin(message.from_user.id):
-        bot.send_message(message.chat.id, "🛟 Бот поддержки.\n/admin — панель администратора.")
+        bot.send_message(
+            message.chat.id,
+            "🛟 Бот поддержки.\n/admin — панель администратора.",
+            reply_markup=support_main_menu(),
+        )
         return
 
     db.clear_state(message.from_user.id)
     db.upsert_telegram_user(message.from_user.id, message.from_user.username)
     user = db.get_user(message.from_user.id)
     if user and db.has_open_ticket(user["id"]):
-        bot.send_message(message.chat.id, "⏳ У тебя уже есть открытое обращение. Дождись ответа администратора, прежде чем создавать новое.")
+        bot.send_message(
+            message.chat.id,
+            "⏳ У тебя уже есть открытое обращение. Дождись ответа администратора, прежде чем создавать новое.",
+            reply_markup=support_main_menu(),
+        )
         return
     bot.send_message(message.chat.id, "Выбери тип обращения:", reply_markup=support_categories())
 
@@ -41,6 +49,11 @@ def start(message):
 def cancel(message):
     db.clear_state(message.from_user.id)
     bot.send_message(message.chat.id, "Действие отменено.")
+
+@bot.message_handler(func=lambda m: m.text == "🏠 Главное меню")
+def back_to_menu(message):
+        db.clear_state(message.from_user.id)
+        start(message)
 
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("ticketcat:"))
@@ -74,7 +87,11 @@ def create_ticket(message):
         return
     tid = db.create_ticket(uid, data.get("category", "question"), message.text)
     db.clear_state(message.from_user.id)
-    bot.send_message(message.chat.id, f"🎫 Обращение №{tid} создано. Ожидай ответа администратора.")
+    bot.send_message(
+        message.chat.id,
+        f"🎫 Обращение №{tid} создано. Ожидай ответа администратора.",
+        reply_markup=support_main_menu(),
+    )
 
 
 @bot.message_handler(commands=["admin"])

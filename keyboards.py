@@ -8,6 +8,11 @@ def main_menu():
     kb.row("🗑 Удалить анкету")
     return kb
 
+def support_main_menu():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.row("🏠 Главное меню")
+    return kb
+
 
 def gender_keyboard():
     kb = types.InlineKeyboardMarkup()

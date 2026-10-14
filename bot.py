@@ -66,10 +66,17 @@ def show_pending_likes_prompt(chat_id, user_id):
     if not user:
         return False
     session = sessions.setdefault(user_id, {"seen": set(), "filter": None, "incoming_mode": False})
-    count = db.incoming_likes_count(user["id"], session.get("filter"))
+
+    # Считаем входящие с учётом фильтра. Если фильтр не находит — пробуем без фильтра.
+    filter_val = session.get("filter")
+    count = db.incoming_likes_count(user["id"], filter_val)
+    if count <= 0:
+        count = db.incoming_likes_count(user["id"], None)
+        filter_val = None
     if count <= 0:
         return False
-    bot.send_message(chat_id, pending_likes_text(user, count, session.get("filter")),
+
+    bot.send_message(chat_id, pending_likes_text(user, count, filter_val),
                      reply_markup=pending_likes_keyboard())
     return True
 

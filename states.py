@@ -16,3 +16,4 @@ class State(StrEnum):
     SUPPORT_REPLY = "support_reply"
 
     ADMIN_SEARCH = "admin_search"
+    ADMIN_BAN_REASON = "admin_ban_reason"

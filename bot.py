@@ -642,14 +642,63 @@ def ban(call):
     if not u:
         bot.answer_callback_query(call.id, "Не найден.")
         return
-    db.ban_user(int(uid), days, "Решение администратора", call.from_user.id)
-    bot.answer_callback_query(call.id, f"Бан {days} дн.")
-    bot.send_message(call.message.chat.id, f"Пользователь заблокирован на {days} дней.")
-    try:
-        bot.send_message(u["telegram_id"], f"⛔ Доступ ограничен на {days} дней. Для вопросов обратись в поддержку.")
-    except ApiTelegramException:
-        log.exception("Ошибка уведомления")
+    db.set_state(
+        call.from_user.id,
+        State.ADMIN_BAN_REASON,
+        {"target_user_id": int(uid), "days": days},
+    )
+    bot.answer_callback_query(call.id)
+    username = f"@{u['username']}" if u["username"] else (u["name"] or "без имени")
+    bot.send_message(
+        call.message.chat.id,
+        f"⛔ Бан {esc(username)} на {days} дн.\n\n"
+        f"Напиши <b>причину бана</b> — её увидит пользователь.\n"
+        f"Чтобы забанить без причины, отправь <code>-</code>.\n"
+        f"Чтобы отменить — <code>/cancel</code>.",
+    )
 
+@bot.message_handler(func=lambda m: db.get_state(m.from_user.id)[0] == State.ADMIN_BAN_REASON)
+def ban_reason(message):
+    if not is_admin(message.from_user.id):
+        return
+    if not message.text:
+        bot.reply_to(message, "Причина должна быть текстом.")
+        return
+
+    _, data = db.get_state(message.from_user.id)
+    target_id = data.get("target_user_id")
+    days = data.get("days")
+    if not target_id or not days:
+        db.clear_state(message.from_user.id)
+        bot.send_message(message.chat.id, "Данные бана потеряны. Начни заново.")
+        return
+
+    reason_text = message.text.strip()
+    if reason_text == "-":
+        reason_text = "Решение администратора"
+    if len(reason_text) > 500:
+        bot.reply_to(message, "Причина должна быть до 500 символов.")
+        return
+
+    u = db.get_user_by_id(int(target_id))
+    if not u:
+        db.clear_state(message.from_user.id)
+        bot.send_message(message.chat.id, "Пользователь не найден.")
+        return
+
+    db.ban_user(int(target_id), int(days), reason_text, message.from_user.id)
+    db.clear_state(message.from_user.id)
+
+    bot.send_message(message.chat.id, f"✅ Пользователь заблокирован на {days} дней.")
+    try:
+        bot.send_message(
+            u["telegram_id"],
+            f"⛔ Доступ ограничен на {days} дней.\n"
+            f"<b>Причина:</b> {esc(reason_text)}\n"
+            f"Для вопросов обратись в поддержку.",
+        )
+    except ApiTelegramException:
+        log.exception("Ошибка уведомления о бане")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("unban:"))
 def unban(call):

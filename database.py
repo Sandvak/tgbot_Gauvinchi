@@ -3,6 +3,10 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+# Сколько дней хранится "память" о лайке/скипе.
+# После этого срока анкета снова может быть показана в поиске.
+SKIP_EXPIRE_DAYS = 0.0001    # скипнул — через 7 дней можно снова увидеть
+LIKE_EXPIRE_DAYS = 0.0001   # лайкнул (без взаимности) — через 30 дней снова увидит
 
 def now_utc() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -286,6 +290,11 @@ class Database:
             gender_sql = "AND u.gender=?"
             extra.append(gender_filter)
 
+        # Считаем, с какого момента лайк/скип ещё считается "свежим"
+        now = datetime.now(timezone.utc)
+        skip_cutoff = (now - timedelta(days=SKIP_EXPIRE_DAYS)).isoformat(timespec="seconds")
+        like_cutoff = (now - timedelta(days=LIKE_EXPIRE_DAYS)).isoformat(timespec="seconds")
+
         with self.connect() as c:
             return c.execute(f"""
                 SELECT u.*,
@@ -299,14 +308,23 @@ class Database:
                   AND u.is_hidden=0
                   AND (u.banned_until IS NULL OR u.banned_until<=?)
                   AND u.id NOT IN (
-                      SELECT to_user_id FROM likes WHERE from_user_id=?
+                      SELECT to_user_id FROM likes
+                      WHERE from_user_id=? AND created_at > ?
                       UNION
-                      SELECT to_user_id FROM skips WHERE from_user_id=?
+                      SELECT to_user_id FROM skips
+                      WHERE from_user_id=? AND created_at > ?
                   )
                   {gender_sql}
                 ORDER BY report_count ASC, RANDOM()
                 LIMIT ?
-            """, (viewer_id, now_utc(), viewer_id, viewer_id, *extra, limit)).fetchall()
+            """, (
+                viewer_id,
+                now_utc(),
+                viewer_id, like_cutoff,
+                viewer_id, skip_cutoff,
+                *extra,
+                limit,
+            )).fetchall()
 
     def incoming_likes(self, user_id: int, gender_filter: str | None = None, limit=30):
         gender_sql = ""
@@ -362,6 +380,12 @@ class Database:
                 (from_id, to_id, now_utc()),
             )
             if cur.rowcount == 0:
+                # Лайк уже был — обновим дату, чтобы он снова "считался свежим"
+                c.execute(
+                    "UPDATE likes SET created_at=? WHERE from_user_id=? AND to_user_id=?",
+                    (now_utc(), from_id, to_id),
+                )
+                # Повторный лайк не считается новым — не шлём уведомление
                 return False
             return c.execute(
                 "SELECT 1 FROM likes WHERE from_user_id=? AND to_user_id=?",

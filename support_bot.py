@@ -4,6 +4,7 @@ from telebot import TeleBot
 
 from config import config
 from database import Database
+from moderation import esc
 from keyboards import support_categories, ticket_actions
 from states import State
 
@@ -18,8 +19,7 @@ def admin(uid):
     return uid in config.admin_ids
 
 
-def esc(s):
-    return str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 
 
 @bot.message_handler(commands=["start"])
@@ -28,6 +28,7 @@ def start(message):
         bot.send_message(message.chat.id, "🛟 Бот поддержки.\n/admin — панель администратора.")
         return
 
+    db.clear_state(message.from_user.id)
     db.upsert_telegram_user(message.from_user.id, message.from_user.username)
     user = db.get_user(message.from_user.id)
     if user and db.has_open_ticket(user["id"]):

@@ -268,7 +268,7 @@ class Database:
         with self.connect() as c:
             row = c.execute("SELECT * FROM user_states WHERE telegram_id=?", (telegram_id,)).fetchone()
             if not row:
-                return None, {}
+                return "idle", {}
             try:
                 return row["state"], json.loads(row["data_json"])
             except json.JSONDecodeError:
@@ -357,10 +357,12 @@ class Database:
 
     def add_like(self, from_id: int, to_id: int) -> bool:
         with self.connect() as c:
-            c.execute(
+            cur = c.execute(
                 "INSERT OR IGNORE INTO likes(from_user_id,to_user_id,created_at) VALUES(?,?,?)",
                 (from_id, to_id, now_utc()),
             )
+            if cur.rowcount == 0:
+                return False
             return c.execute(
                 "SELECT 1 FROM likes WHERE from_user_id=? AND to_user_id=?",
                 (to_id, from_id),

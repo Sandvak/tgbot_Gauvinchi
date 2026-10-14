@@ -11,7 +11,7 @@ from keyboards import (
     pending_likes_keyboard, photo_keyboard, profile_actions,
     repeat_profile_keyboard, report_actions, ticket_actions
 )
-from moderation import format_profile, snapshot_to_text, ban_until_text
+from moderation import esc, format_profile, snapshot_to_text, ban_until_text
 from states import State
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
@@ -22,8 +22,7 @@ db = Database(config.db_path)
 sessions = {}
 
 
-def esc(s):
-    return str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 
 
 def is_admin(uid):
@@ -391,20 +390,28 @@ def incoming_filter(call):
 
 def next_profile(chat_id, viewer_tg):
     session = sessions.setdefault(viewer_tg, {"seen": set(), "filter": None, "incoming_mode": False})
+
+    # Получаем внутренний id (users.id) — именно он нужен для сравнений в БД
+    viewer = db.get_user(viewer_tg)
+    if not viewer:
+        bot.send_message(chat_id, "Анкета не найдена.", reply_markup=main_menu())
+        return
+    viewer_internal = viewer["id"]
+
     if session.get("incoming_mode"):
-        candidates = db.incoming_likes(viewer_tg, session.get("filter"), 30)
+        candidates = db.incoming_likes(viewer_internal, session.get("filter"), 30)
         candidates = [x for x in candidates if x["id"] not in session["seen"]]
         if not candidates:
             session["incoming_mode"] = False
-            count = db.incoming_likes_count(viewer_tg, session.get("filter"))
+            count = db.incoming_likes_count(viewer_internal, session.get("filter"))
             if count:
-                bot.send_message(chat_id, pending_likes_text(db.get_user(viewer_tg), count, session.get("filter")),
+                bot.send_message(chat_id, pending_likes_text(viewer, count, session.get("filter")),
                                  reply_markup=pending_likes_keyboard())
             else:
                 bot.send_message(chat_id, "На этом пока всё 💖", reply_markup=main_menu())
             return
     else:
-        candidates = db.get_candidates(viewer_tg, session.get("filter"), 30)
+        candidates = db.get_candidates(viewer_internal, session.get("filter"), 30)
         candidates = [x for x in candidates if x["id"] not in session["seen"]]
         if not candidates:
             bot.send_message(chat_id, "Пока новых анкет нет. Попробуй зайти позже.", reply_markup=main_menu())

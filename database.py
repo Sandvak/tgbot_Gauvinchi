@@ -5,8 +5,13 @@ from typing import Any
 
 # Сколько дней хранится "память" о лайке/скипе.
 # После этого срока анкета снова может быть показана в поиске.
-SKIP_EXPIRE_DAYS = 0.0001    # скипнул — через 7 дней можно снова увидеть
+SKIP_EXPIRE_DAYS = 0.0001  # скипнул — через 7 дней можно снова увидеть
 LIKE_EXPIRE_DAYS = 0.0001   # лайкнул (без взаимности) — через 30 дней снова увидит
+
+
+# Насколько лет в плюс/минус показывать анкеты при поиске.
+# 1 = показывать людей на 1 год младше и на 1 год старше.
+AGE_RANGE = 1
 
 def now_utc() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -283,12 +288,33 @@ class Database:
             c.execute("DELETE FROM user_states WHERE telegram_id=?", (telegram_id,))
 
     # Ratings
-    def get_candidates(self, viewer_id: int, gender_filter: str | None, limit=20):
+    def get_candidates(self, viewer_id: int, gender_filter: str | None, limit=20, age_range=None):
+        """
+        Возвращает список анкет-кандидатов.
+        age_range — на сколько лет в плюс/минус искать.
+          None      → использовать AGE_RANGE по умолчанию
+          0         → только ровесники
+          любое N   → ±N лет
+          -1        → не фильтровать по возрасту вообще (для фолбэка)
+        """
+        # Определяем диапазон
+        if age_range is None:
+            age_range = AGE_RANGE
+
+        # Узнаём возраст зрителя (нужен для фильтра)
+        viewer = self.get_user_by_id(viewer_id)
+        viewer_age = viewer["age"] if viewer and viewer["age"] else None
+
         extra = []
         gender_sql = ""
         if gender_filter in ("male", "female"):
             gender_sql = "AND u.gender=?"
             extra.append(gender_filter)
+
+        age_sql = ""
+        if age_range >= 0 and viewer_age:
+            age_sql = "AND u.age BETWEEN ? AND ?"
+            extra.extend([viewer_age - age_range, viewer_age + age_range])
 
         # Считаем, с какого момента лайк/скип ещё считается "свежим"
         now = datetime.now(timezone.utc)
@@ -315,6 +341,7 @@ class Database:
                       WHERE from_user_id=? AND created_at > ?
                   )
                   {gender_sql}
+                  {age_sql}
                 ORDER BY report_count ASC, RANDOM()
                 LIMIT ?
             """, (

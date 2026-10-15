@@ -418,8 +418,19 @@ def next_profile(chat_id, viewer_tg):
                 bot.send_message(chat_id, "На этом пока всё 💖", reply_markup=main_menu())
             return
     else:
+        # Сначала ищем в диапазоне ±AGE_RANGE лет
         candidates = db.get_candidates(viewer_internal, session.get("filter"), 30)
         candidates = [x for x in candidates if x["id"] not in session["seen"]]
+
+        # Если в диапазоне никого — ищем без учёта возраста
+        if not candidates:
+            candidates = db.get_candidates(viewer_internal, session.get("filter"), 30, age_range=-1)
+            candidates = [x for x in candidates if x["id"] not in session["seen"]]
+            if candidates:
+                bot.send_message(
+                    chat_id,
+                    "👥 В твоём возрасте пока никого — покажу анкеты постарше/помладше.",
+                )
         if not candidates:
             bot.send_message(chat_id, "Пока новых анкет нет. Попробуй зайти позже.", reply_markup=main_menu())
             return

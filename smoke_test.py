@@ -1,10 +1,22 @@
-from tempfile import NamedTemporaryFile
+import os
+import tempfile
 from database import Database
 
-
 def main():
-    with NamedTemporaryFile(suffix=".sqlite3") as f:
-        db = Database(f.name)
+    tmp_dir = tempfile.mkdtemp(prefix="smoke_")
+    db_path = os.path.join(tmp_dir, "smoke.sqlite3")
+    db = Database(db_path)
+    try:
+        # ... здесь весь код с тестами (тот, что был внутри with)
+        # ...
+        print("V2.1 smoke test: OK")
+    finally:
+        # Убираем временный файл после теста
+        try:
+            os.remove(db_path)
+            os.rmdir(tmp_dir)
+        except OSError:
+            pass
 
         db.upsert_telegram_user(1, "alice")
         db.upsert_telegram_user(2, "bob")

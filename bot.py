@@ -466,11 +466,16 @@ def rate(call):
     if action == "like":
         mutual = db.add_like(viewer["id"], target["id"])
         bot.answer_callback_query(call.id, "❤️ Лайк отправлен")
-        if mutual and incoming_mode:
-            send_profile(call.message.chat.id, target, actions=False)
+        if mutual:
+            # 1. Тому, кто лайкнул сейчас — показываем анкету target'а + username
+            if incoming_mode:
+                send_profile(call.message.chat.id, target, actions=False)
             username = f"@{target['username']}" if target["username"] else "username не указан"
             bot.send_message(call.message.chat.id, f"🎉 Поздравляю! У вас взаимная симпатия с {esc(username)}")
+
+            # 2. Тому, кто лайкнул первым (target'у) — отправляем анкету viewer'а + username
             try:
+                send_profile(target["telegram_id"], viewer, actions=False)
                 my_username = f"@{viewer['username']}" if viewer["username"] else "username не указан"
                 bot.send_message(target["telegram_id"], f"🎉 Поздравляю! У вас взаимная симпатия с {esc(my_username)}")
             except ApiTelegramException:
